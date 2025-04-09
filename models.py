@@ -12,3 +12,13 @@ class NewsArticle(Base):
     sentiment = Column(Float)
     relevance = Column(Float)
     relative_sentiment = Column(Float)
+
+
+class SentimentStats(Base):
+    __tablename__ = "SentimentStats"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    sentimentArray = Column(String)
+    positiveSentimentsArray = Column(String)
+    neutralSentimentsArray = Column(String)
+    negativeSentimentsArray=  Column(String)
