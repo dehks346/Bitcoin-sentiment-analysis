@@ -2,17 +2,235 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Article Graph</title>
-    <!-- Include Plotly.js from CDN -->
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Sentiment Dashboard</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        .dashboard-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 1.5rem 0;
+            margin-bottom: 2rem;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            border: none;
+        }
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            padding: 1rem 1.5rem;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .chart-container {
+            padding: 1.5rem;
+        }
+        .update-info {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-align: right;
+            padding: 0.5rem 1rem;
+        }
+        .metric-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .positive {
+            color: #34A853;
+        }
+        .negative {
+            color: #EA4335;
+        }
+        .neutral {
+            color: #FBBC05;
+        }
+    </style>
 </head>
 <body>
-    <h1>Article Data Visualization</h1>
-    <!-- Embed the Plotly graph -->
-    <div style="display: flex; flex-direction: column;">
-        <div>{{ graph | safe }}</div>
-        <div>{{ btc_graph | safe }}</div>
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1><i class="bi bi-graph-up"></i> Crypto Sentiment Dashboard</h1>
+                    <p class="mb-0">Real-time sentiment analysis correlated with Bitcoin price</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="update-info">
+                        <i class="bi bi-clock-history"></i> Last updated: {{ last_updated }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Content -->
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Key Metrics Column -->
+            <div class="col-lg-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-speedometer2"></i> Key Metrics
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- Current BTC Price -->
+                            <div class="col-sm-6 col-lg-12 mb-3">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="btc-price">$--.--</div>
+                                    <div class="metric-label">BTC Price</div>
+                                </div>
+                            </div>
+                            <!-- Current Sentiment -->
+                            <div class="col-sm-6 col-lg-12 mb-3">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="current-sentiment">--</div>
+                                    <div class="metric-label">Current Sentiment</div>
+                                </div>
+                            </div>
+                            <!-- Correlation -->
+                            <div class="col-sm-6 col-lg-12 mb-3">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="correlation">--</div>
+                                    <div class="metric-label">Price-Sentiment Correlation</div>
+                                </div>
+                            </div>
+                            <!-- Volatility -->
+                            <div class="col-sm-6 col-lg-12">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="volatility">--%</div>
+                                    <div class="metric-label">24h Volatility</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeframe Controls -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-calendar-range"></i> Timeframe
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group w-100 mb-3">
+                            <button class="btn btn-outline-primary timeframe-btn active" data-days="7">1 Week</button>
+                            <button class="btn btn-outline-primary timeframe-btn" data-days="30">1 Month</button>
+                            <button class="btn btn-outline-primary timeframe-btn" data-days="90">3 Months</button>
+                        </div>
+                        <div class="input-group">
+                            <input type="date" class="form-control" id="start-date">
+                            <span class="input-group-text">to</span>
+                            <input type="date" class="form-control" id="end-date">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Charts Column -->
+            <div class="col-lg-9">
+                <!-- Sentiment Chart -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-emoji-smile"></i> News Sentiment Analysis</span>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-secondary toggle-metric" data-metric="vader">VADER</button>
+                            <button class="btn btn-sm btn-outline-secondary toggle-metric" data-metric="textblob">TextBlob</button>
+                            <button class="btn btn-sm btn-outline-secondary toggle-metric active" data-metric="all">All</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        {{ sentiment_graph|safe }}
+                    </div>
+                </div>
+
+                <!-- Bitcoin Price Chart -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-currency-bitcoin"></i> Bitcoin Price</span>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-secondary toggle-view" data-view="price">Price</button>
+                            <button class="btn btn-sm btn-outline-secondary toggle-view active" data-view="candlestick">Candlestick</button>
+                            <button class="btn btn-sm btn-outline-secondary toggle-view" data-view="volume">Volume</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        {{ bitcoin_graph|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // Auto-refresh every 5 minutes
+        setTimeout(function(){
+            window.location.reload();
+        }, 300000);
+        
+        // Timeframe controls
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                // Implement your data reloading logic here
+                console.log('Timeframe changed to:', this.dataset.days, 'days');
+            });
+        });
+        
+        // Metric toggles
+        document.querySelectorAll('.toggle-metric').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.toggle-metric').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                // Implement your metric toggle logic here
+                console.log('Showing metric:', this.dataset.metric);
+            });
+        });
+        
+        // View toggles
+        document.querySelectorAll('.toggle-view').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.toggle-view').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                // Implement your view toggle logic here
+                console.log('Showing view:', this.dataset.view);
+            });
+        });
+        
+        // Sample data update - replace with real data from your backend
+        function updateMetrics() {
+            document.getElementById('btc-price').textContent = '$' + (Math.random() * 1000 + 30000).toFixed(2);
+            document.getElementById('current-sentiment').textContent = (Math.random() * 2 - 1).toFixed(2);
+            document.getElementById('correlation').textContent = (Math.random() * 0.8 + 0.2).toFixed(2);
+            document.getElementById('volatility').textContent = (Math.random() * 10 + 2).toFixed(2) + '%';
+        }
+        
+        // Initial update
+        updateMetrics();
+        
+        // Update metrics every minute
+        setInterval(updateMetrics, 60000);
+    </script>
 </body>
 </html>

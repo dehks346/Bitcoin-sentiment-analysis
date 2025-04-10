@@ -12,8 +12,41 @@ from datetime import datetime
 import json
 import pandas as pd
 import yfinance as yf
+import plotly.graph_objects as go
+from fastapi import Header
 
 
+# Shared configuration for both charts
+CHART_CONFIG = {
+    "width": 1100,
+    "height": 650,
+    "font_family": "Arial",
+    "title_font_size": 20,
+    "axis_title_font_size": 14,
+    "axis_tick_font_size": 12,
+    "legend_font_size": 12,
+    "hover_font_size": 12,
+    "colors": {
+        "vader": "#4285F4",
+        "textblob": "#EA4335",
+        "combined": "#34A853",
+        "trend_line": "#9D40C5",
+        "neutral_line": "#5F6368",
+        "background": "white",
+        "grid": "rgba(0,0,0,0.05)"
+    },
+    "range_selector": {
+        "buttons": [
+            {"count": 7, "label": "1w", "step": "day", "stepmode": "backward"},
+            {"count": 1, "label": "1m", "step": "month", "stepmode": "backward"},
+            {"count": 3, "label": "3m", "step": "month", "stepmode": "backward"},
+            {"step": "all", "label": "Full Range"}
+        ],
+        "font_size": 11,
+        "bgcolor": "rgba(255,255,255,0.8)",
+        "bordercolor": "rgba(0,0,0,0.1)"
+    }
+}
 
 
 
@@ -97,21 +130,130 @@ async def display_data(request: Request):
     return templates.TemplateResponse('data.html', {'request': request, 'articles': articles})
 
 
-@app.get('/graph', response_class=HTMLResponse)
-async def graph(request: Request):
-    
+@app.get('/combined-graph', response_class=HTMLResponse)
+async def combined_graph(
+    request: Request,
+    cache_control: str = Header(default="max-age=3600")  # 1 hour cache
+):
     with SessionLocal() as db:
-        articles = db.query(NewsArticle).all()
-
-    if not articles:
-        return templates.TemplateResponse("graph.html", {"request": request, "graph": "<p>No data available</p>"})
+        articles = db.query(NewsArticle).order_by(NewsArticle.date.asc()).all()
     
+    if not articles:
+        return templates.TemplateResponse("graph.html", {
+            "request": request, 
+            "sentiment_graph": "<p>No sentiment data available</p>",
+            "bitcoin_graph": ""
+        })
+    
+    min_date = min(article.date for article in articles)
+    max_date = max(article.date for article in articles)
+    
+    # Extend end date to current hour if needed
+    now = datetime.utcnow()
+    if max_date.date() == now.date():
+        max_date = now
+    
+    sentiment_graph = create_sentiment_graph(articles)
+    bitcoin_graph = create_bitcoin_graph(min_date, max_date)
+    
+    response = templates.TemplateResponse(
+        'graph.html',
+        {
+            'request': request,
+            'sentiment_graph': sentiment_graph,
+            'bitcoin_graph': bitcoin_graph,
+            'last_updated': now.strftime("%Y-%m-%d %H:%M UTC")
+        }
+    )
+    response.headers["Cache-Control"] = cache_control
+    return response
+    
+def fetch_bitcoin_data(start_date, end_date):
+    btc = yf.Ticker("BTC-USD")
+    btc_df = btc.history(
+        start=start_date.strftime('%Y-%m-%d'),
+        end=end_date.strftime('%Y-%m-%d'),
+        interval="1h"  # Changed from daily to hourly
+    ).reset_index()
+    
+    # For periods >90 days, fall back to daily data
+    if len(btc_df) < 2:
+        btc_df = btc.history(
+            start=start_date.strftime('%Y-%m-%d'),
+            end=end_date.strftime('%Y-%m-%d'),
+            interval="1d"
+        ).reset_index()
+    
+    return btc_df
+
+def create_bitcoin_graph(start_date, end_date):
+    btc_df = fetch_bitcoin_data(start_date, end_date)
+    
+    fig = go.Figure(
+        layout=go.Layout(
+            autosize=True,
+            width=CHART_CONFIG["width"],
+            height=CHART_CONFIG["height"],
+            margin=dict(
+                l=50,
+                r=50,
+                b=60,
+                t=90,
+                pad=4,
+                autoexpand=True
+            )
+        )
+    )
+    
+    # Candlestick-style visualization for hourly data
+    fig.add_trace(go.Scatter(
+        x=btc_df['Datetime'],
+        y=btc_df['Close'],
+        mode='lines',
+        name='BTC Price',
+        line=dict(
+            color=CHART_CONFIG["colors"]["combined"],
+            width=2  # Slightly thinner for dense hourly data
+        ),
+        connectgaps=True
+    ))
+    
+    # Add thicker line for daily average (smooths hourly fluctuations)
+    if '1h' in str(btc_df['Datetime'].diff().min()):
+        daily_df = btc_df.resample('D', on='Datetime').mean().reset_index()
+        fig.add_trace(go.Scatter(
+            x=daily_df['Datetime'],
+            y=daily_df['Close'],
+            mode='lines',
+            name='Daily Average',
+            line=dict(
+                color=CHART_CONFIG["colors"]["combined"],
+                width=3.5
+            )
+        ))
+    
+    # ... [rest of your identical styling code] ...
+    
+    # Update x-axis to handle hourly ticks
+    fig.update_xaxes(
+        rangeslider_visible=True,
+        rangebreaks=[
+            # Hide weekends for crypto markets that trade 24/7
+            dict(bounds=["sat", "mon"]),
+            # Hide non-trading hours (if needed)
+            dict(bounds=[20, 9], pattern="hour")  # 8pm to 9am
+        ]
+    )
+    
+    return fig.to_html(full_html=False)
+
+def create_sentiment_graph(articles):
+    # Data preparation
     dates = [article.date for article in articles]
     vader_compound = [article.vader_compound for article in articles]
     textblob_polarity = [article.textblob_polarity for article in articles]
     combined_sentiment = [article.combined_sentiment for article in articles]
     
-    # Create DataFrame
     df = pd.DataFrame({
         'date': pd.to_datetime(dates),
         'vader_compound': vader_compound,
@@ -119,26 +261,26 @@ async def graph(request: Request):
         'combined_sentiment': combined_sentiment
     }).sort_values(by='date')
     
-    # Calculate rolling average before any scaling
-    window_size = 3  # Slightly larger window for smoother results
+    # Calculate rolling average
+    window_size = 3
     df['smoothed_avg'] = df['combined_sentiment'].rolling(
         window=window_size,
         min_periods=1,
         center=True
     ).mean()
     
-    # Create figure with proper dimensions
+    # Create figure
     fig = px.line(
         df,
         x='date',
         y=['vader_compound', 'textblob_polarity', 'combined_sentiment'],
         labels={'date': 'Date', 'value': 'Sentiment Score'},
-        title='<b>Sentiment Analysis Timeline</b>',
-        width=1100,
-        height=650
+        title='<b>News Sentiment Analysis</b>',
+        width=CHART_CONFIG["width"],
+        height=CHART_CONFIG["height"]
     )
     
-    # Enhanced line styling
+    # Line styling
     line_styles = {
         'vader_compound': {'color': '#4285F4', 'width': 2.2, 'dash': 'solid'},
         'textblob_polarity': {'color': '#EA4335', 'width': 2.2, 'dash': 'solid'},
@@ -149,7 +291,7 @@ async def graph(request: Request):
         if trace.name in line_styles:
             trace.update(line=line_styles[trace.name])
     
-    # Add smoothed average with distinct style
+    # Add smoothed average
     fig.add_scatter(
         x=df['date'],
         y=df['smoothed_avg'],
@@ -158,7 +300,7 @@ async def graph(request: Request):
         line=dict(color='#9D40C5', width=3.5, dash='dot')
     )
     
-    # Sentiment regions with natural scale (-1 to 1)
+    # Sentiment regions
     sentiment_regions = [
         {'range': (-1, -0.5), 'color': 'rgba(234, 67, 53, 0.15)', 'label': 'Negative'},
         {'range': (-0.5, -0.1), 'color': 'rgba(234, 67, 53, 0.08)', 'label': 'Slightly Negative'},
@@ -179,7 +321,7 @@ async def graph(request: Request):
             line_width=0
         )
     
-    # Zero line with better visibility
+    # Zero line
     fig.add_hline(
         y=0,
         line_dash='dash',
@@ -190,12 +332,12 @@ async def graph(request: Request):
         annotation_font=dict(size=12)
     )
     
-    # Detect significant changes (using natural scale)
+    # Detect significant changes
     df['change'] = df['combined_sentiment'].diff()
     change_threshold = 0.25
     significant_changes = df[abs(df['change']) > change_threshold].nlargest(3, 'change')
     
-    # Annotate significant changes
+    # Annotate changes
     for _, row in significant_changes.iterrows():
         direction = "↑" if row['change'] > 0 else "↓"
         fig.add_annotation(
@@ -211,14 +353,17 @@ async def graph(request: Request):
             borderwidth=1,
             font=dict(size=12, color='#5F6368')
         )
+        
+        
     
-    # Final layout adjustments
+    # Layout adjustments
     fig.update_layout(
+        autosize=True,
         plot_bgcolor='white',
         paper_bgcolor='white',
         font=dict(family="Arial", size=13, color="#202124"),
         title={
-            'text': "<b>Sentiment Analysis Timeline</b>",
+            'text': "<b>News Sentiment Analysis</b>",
             'y':0.96,
             'x':0.5,
             'xanchor': 'center',
@@ -276,172 +421,49 @@ async def graph(request: Request):
         )
     )
     
-    # Enhanced hover information
     fig.update_traces(
         hovertemplate="<b>%{x|%b %d, %Y}</b><br>Sentiment: %{y:.3f}<extra>%{fullData.name}</extra>"
     )
     
-    graph_html = fig.to_html(full_html=False)
+    return fig.to_html(full_html=False)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    with SessionLocal() as db:
+        articles = db.query(NewsArticle).order_by(NewsArticle.date.asc()).all()
     
+    if not articles:
+        return templates.TemplateResponse("graph.html", {
+            "request": request, 
+            "sentiment_graph": "<p>No sentiment data available</p>",
+            "bitcoin_graph": ""
+        })
+    
+    min_date = min(article.date for article in articles)
+    max_date = max(article.date for article in articles)
+    
+    # Get current BTC price for the metrics panel
     btc = yf.Ticker("BTC-USD")
-    df = btc.history(period="6mo")  # Get 6 months of data
+    current_btc = btc.history(period="1d")
+    current_price = current_btc['Close'].iloc[-1] if not current_btc.empty else 0
     
-    # Reset index to make Date a column
-    df = df.reset_index()
+    # Calculate current sentiment (average of last 3 articles)
+    current_sentiment = sum(a.combined_sentiment for a in articles[-3:])/3 if len(articles) >= 3 else 0
     
-    # Create figure with identical styling
-    fig = px.line(
-        df,
-        x='Date',
-        y='Close',
-        labels={'Date': 'Date', 'Close': 'Price (USD)'},
-        title='<b>Bitcoin Price Timeline</b>',
-        width=1100,
-        height=650
+    sentiment_graph = create_sentiment_graph(articles)
+    bitcoin_graph = create_bitcoin_graph(min_date, max_date)
+    
+    return templates.TemplateResponse(
+        "graph.html",
+        {
+            "request": request,
+            "sentiment_graph": sentiment_graph,
+            "bitcoin_graph": bitcoin_graph,
+            "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+            "metrics": {
+                "btc_price": current_price,
+                "current_sentiment": current_sentiment,
+                # Add more metrics as needed
+            }
+        }
     )
-    
-    # Apply identical line styling
-    fig.update_traces(
-        line=dict(color='#4285F4', width=3, dash='solid'),
-        name='BTC Price'
-    )
-    
-    # Add moving average (30-day) to match the smoothed average in sentiment chart
-    df['30_day_ma'] = df['Close'].rolling(window=30, min_periods=1).mean()
-    fig.add_scatter(
-        x=df['Date'],
-        y=df['30_day_ma'],
-        mode='lines',
-        name='Trend Line (30-day)',
-        line=dict(color='#9D40C5', width=3.5, dash='dot')
-    )
-    
-    # Price regions (matching sentiment style but for price ranges)
-    price_min = df['Close'].min()
-    price_max = df['Close'].max()
-    price_range = price_max - price_min
-    price_regions = [
-        {'range': (price_min, price_min + 0.2*price_range), 'color': 'rgba(234, 67, 53, 0.1)', 'label': 'Low'},
-        {'range': (price_min + 0.2*price_range, price_min + 0.8*price_range), 'color': 'rgba(189, 189, 189, 0.1)', 'label': 'Mid'},
-        {'range': (price_min + 0.8*price_range, price_max), 'color': 'rgba(52, 168, 83, 0.1)', 'label': 'High'}
-    ]
-    
-    for region in price_regions:
-        fig.add_shape(
-            type="rect",
-            x0=df['Date'].min(),
-            x1=df['Date'].max(),
-            y0=region['range'][0],
-            y1=region['range'][1],
-            fillcolor=region['color'],
-            layer="below",
-            line_width=0
-        )
-    
-    # Add median line instead of zero line
-    median_price = df['Close'].median()
-    fig.add_hline(
-        y=median_price,
-        line_dash='dash',
-        line_color='#5F6368',
-        line_width=2,
-        annotation_text=f"Median: ${median_price:,.2f}",
-        annotation_position="bottom right",
-        annotation_font=dict(size=12)
-    )
-    
-    # Detect significant price changes (5% daily change)
-    df['change'] = df['Close'].pct_change() * 100
-    change_threshold = 5  # 5%
-    significant_changes = df[abs(df['change']) > change_threshold].nlargest(3, 'change')
-    
-    # Annotate significant changes
-    for _, row in significant_changes.iterrows():
-        direction = "↑" if row['change'] > 0 else "↓"
-        fig.add_annotation(
-            x=row['Date'],
-            y=row['Close'],
-            text=f"{direction} {abs(row['change']):.1f}%",
-            showarrow=True,
-            arrowhead=2,
-            ax=0,
-            ay=-40 if row['change'] > 0 else 40,
-            bgcolor="white",
-            bordercolor="#5F6368",
-            borderwidth=1,
-            font=dict(size=12, color='#5F6368')
-        )
-    
-    # Apply identical layout
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        font=dict(family="Arial", size=13, color="#202124"),
-        title={
-            'text': "<b>Bitcoin Price Timeline</b>",
-            'y':0.96,
-            'x':0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': dict(size=20, color='#202124')
-        },
-        xaxis=dict(
-            title="<b>Date</b>",
-            title_font=dict(size=14),
-            gridcolor='rgba(0,0,0,0.05)',
-            showgrid=True,
-            rangeslider=dict(visible=True, thickness=0.08),
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=7, label="1w", step="day", stepmode="backward"),
-                    dict(count=1, label="1m", step="month", stepmode="backward"),
-                    dict(count=3, label="3m", step="month", stepmode="backward"),
-                    dict(step="all", label="Full Range")
-                ]),
-                font=dict(size=11),
-                bgcolor='rgba(255,255,255,0.8)',
-                bordercolor='rgba(0,0,0,0.1)',
-                borderwidth=1
-            )
-        ),
-        yaxis=dict(
-            title="<b>Price (USD)</b>",
-            title_font=dict(size=14),
-            gridcolor='rgba(0,0,0,0.05)',
-            zeroline=False,
-            tickprefix="$",
-            tickformat=",.0f",
-            tickfont=dict(size=12)
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5,
-            bgcolor='rgba(255,255,255,0.8)',
-            bordercolor='rgba(0,0,0,0.1)',
-            borderwidth=1,
-            font=dict(size=12),
-            itemwidth=30
-        ),
-        margin=dict(l=50, r=50, t=90, b=60),
-        hovermode="x unified",
-        hoverlabel=dict(
-            bgcolor="white",
-            font_size=12,
-            font_family="Arial",
-            bordercolor="#5F6368"
-        )
-    )
-    
-    # Enhanced hover information
-    fig.update_traces(
-        hovertemplate="<b>%{x|%b %d, %Y}</b><br>Price: $%{y:,.2f}<extra>%{fullData.name}</extra>"
-    )
-    
-    bitcoin_graph = fig.to_html(full_html=False)
-    
-    return templates.TemplateResponse('graph.html', {'request': request, 'graph': graph_html, 'btc_graph': bitcoin_graph})
-
-
