@@ -1,149 +1,140 @@
-from sqlalchemy.orm import Session
-from datetime import datetime
-from database import SessionLocal
-from models import NewsArticle
-from database import init_db
 from fastapi import FastAPI, Depends, Request
+from database import SessionLocal, engine
+from models import NewsArticle, Base
+from sentiment_analysis import get_data, data_to_dict, calculate_relevance, vader_sentiment_analysis
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
-from sentiment_analysis import get_data, data_to_dict, calculate_relevance, vader_sentiment_analysis, vader_sentiment_array
-import io
-import base64
-from bokeh.plotting import figure, show, save, output_file
-from bokeh.io import output_file
-from bokeh.models import HoverTool
-from bokeh.embed import components
+from fastapi.staticfiles import StaticFiles
+import plotly.express as px
+from jinja2 import Template
+from sqlalchemy import func
+from datetime import datetime
+
+
+
+
 
 app = FastAPI()
+
 templates = Jinja2Templates(directory='templates')
 
-#provides a database session for each request and ensures
-#its closed afterwards
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+#Base.metadata.drop_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
+#print("Database reset successfully!")
 
-#initialises the database when the application starts
-@app.on_event("startup")
-def startup():
-    init_db()
 
-#when a HTTP GEt request is made to the endpoint "/articles"
-#the decorator tells FASTAPI to execute the code below
-@app.get('/articles', response_class=HTMLResponse)
-#Fetches all articles from the database and renders
-#them as a HTML page
-def get_articles_html(request: Request, db: Session = Depends(get_db)):
-    articles = db.query(NewsArticle).all()
+
+
+@app.get('/fetch-and-store-data')
+async def fetch_and_store_data():
     
-    return templates.TemplateResponse('articles.html', {'request': request, 'articles': articles})
-
-
-def get_sentiment_data(db: Session):
-    articles = db.query(NewsArticle).all()
+    data = get_unproccessed_data()
+    titles = [item['title'] for item in data]
     
-    dates, sentiment_values, relative_sentiment_values = [], [], []
     
-    for article in articles:
-        dates.append(article.date)
-        sentiment_values.append(article.sentiment)
-        relative_sentiment_values.append(article.relative_sentiment)
+    with SessionLocal() as db:
         
-    return dates, sentiment_values, relative_sentiment_values
+        existing_titles = {row[0] for row in db.query(NewsArticle.title).filter(NewsArticle.title.in_(titles)).all()}        
+        new_articles = [item for item in data if item['title'] not in existing_titles]
+    
+        seen_titles = set()
+        deduped_new_articles = []
+        for item in new_articles:
+            if item['title'] not in seen_titles:
+                deduped_new_articles.append(item)
+                seen_titles.add(item['title'])
+            else:
+                print(f"Skipping duplicate:  {item['title']}")
+    
+        processed_new_articles = calculate_relevance(deduped_new_articles) 
+        processed_new_articles = vader_sentiment_analysis(processed_new_articles)
+        
+        stored_count = 0
+        for x in processed_new_articles:
+            
+            try:
+                pub_date = datetime.strptime(x['date'], "%m/%d/%Y, %I:%M %p, +0000 UTC")
+            except ValueError as e:
+                print(f"Skipping article '{x['title']}' due to invalid date: {x['date']} - {e}")
+                continue
+                
+            article = NewsArticle(
+                title = x['title'],
+                date = pub_date,
+                sentiment = x.get('sentiment', {}).get('compound', 0),
+                relevance = x['relevance'],
+                relative_sentiment = x['relative_compound'],
+            )
+            db.add(article)
+            db.commit()
+            db.refresh(article)
+            stored_count += 1
+    return {"message": f"Stored {stored_count} new articles out of {len(titles)} fetched"}
+@app.get('/display-data', response_class=HTMLResponse)
+async def display_data(request: Request):
+    
+    with SessionLocal() as db:
+        articles = db.query(NewsArticle).all()
+        
+        
+    return templates.TemplateResponse('data.html', {'request': request, 'articles': articles})
 
+@app.get('/graph', response_class=HTMLResponse)
+async def graph(request: Request):
+    with SessionLocal() as db:
+        # Query articles ordered by date
+        data = db.query(NewsArticle.date, NewsArticle.sentiment).order_by(NewsArticle.date).all()
 
-@app.get("/chart", response_class=HTMLResponse)
-def chart(request: Request, db: Session = Depends(get_db)):
-    # Fetch the data from the database
-    dates, sentiment_values, relative_sentiment_values = get_sentiment_data(db)
+    if not data:
+        return templates.TemplateResponse(
+            "graph.html",
+            {"request": request, "graph": "<p>No data available</p>"}
+        )
 
-    # Create the Bokeh plot
-    p = figure(
-        title="Sentiment and Relative Sentiment Over Time",
-        x_axis_label='Date',
-        y_axis_label='Sentiment Score',
-        x_axis_type='datetime',
-        height=400,
-        width=800
+    # Extract dates and sentiment scores
+    dates = [row[0] for row in data]
+    sentiments = [row[1] for row in data]
+
+    # Create a line plot
+    fig = px.line(
+        x=dates,
+        y=sentiments,
+        labels={"x": "Publication Date", "y": "Sentiment Score"},
+        title="Sentiment Over Time"
+    )
+    # Add a horizontal line at y=0 for neutral sentiment
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+
+    # Calculate relative sentiment (e.g., rolling average)
+    # For simplicity, we'll use a basic moving average here
+    window_size = 5
+    rolling_sentiment = [
+        sum(sentiments[max(0, i - window_size + 1):i + 1]) / min(i + 1, window_size)
+        for i in range(len(sentiments))
+    ]
+    fig.add_scatter(
+        x=dates,
+        y=rolling_sentiment,
+        mode="lines",
+        name="Rolling Average Sentiment",
+        line=dict(color="red")
     )
 
-    # Convert dates to datetime format if they are strings
-    dates = [datetime.strptime(date, "%Y-%m-%d") for date in dates]
+    graph_html = fig.to_html(full_html=False)
 
-    # Plot sentiment values
-    p.line(dates, sentiment_values, legend_label="Sentiment", line_width=2, color="blue")
-    
-    # Plot relative sentiment values
-    p.line(dates, relative_sentiment_values, legend_label="Relative Sentiment", line_width=2, color="green")
-
-    # Add hover tool to show values when hovering over points
-    hover = HoverTool()
-    hover.tooltips = [("Date", "@x{%F}"), ("Sentiment", "@y")]
-    hover.formatters = {"@x": "datetime"}  # Use datetime formatter for the x-axis
-    p.add_tools(hover)
-
-    # Format the axis for dates
-    p.xaxis.major_label_orientation = 1  # Rotate the x-axis labels for better visibility
-
-    # Use Bokeh's `components` function to get the HTML and JavaScript for the plot
-    script, div = components(p)
-
-    # Return the HTML and JavaScript as part of the response
-    return HTMLResponse(content=f"{script}\n{div}")
+    return templates.TemplateResponse(
+        "graph.html",
+        {"request": request, "graph": graph_html}
+    )
 
 
-
-@app.get("/fetch_and_store_data")
-#Fetches, Processes, and stores new data in the database
-def fetch_and_store_data(db: Session = Depends(get_db)):
+def get_unproccessed_data():
     params = {
     "api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0",
     "engine": "google_news",
     "hl": "en",
-    "q": "meta"
+    "q": "bitcoin"
     }
-    
     data = get_data(params)
-    data_dict = data_to_dict(data)
-    data_dict = calculate_relevance(data_dict)
-    data_dict = vader_sentiment_analysis(data_dict)
-        
-    process_and_store_data(data_dict, db)
-    
-    return {"message": "Data fetched and stored successfully"}
-
-#processes and stores multiple news articles in the database
-def process_and_store_data(results, db: Session):
-    for story in results:
-        if 'date' in story:
-            title = story['title']
-            date = story['date'][:10]
-            sentiment = story.get('sentiment', {}).get('compound', 0)
-            relevance = story.get('relevance', 1)
-            relative_sentiment = story['relative_compound']
-            
-            add_article_to_db(db, title, date, sentiment, relevance, relative_sentiment)
-
-#adds a news article with its detials to the database
-def add_article_to_db(db: Session, title: str, date: str, sentiment: float, relevance: float, relative_sentiment: float):
-    existing_article = db.query(NewsArticle).filter(NewsArticle.title == title).first()
-    if existing_article: return
-    article = NewsArticle(
-        title=title,
-        date = datetime.strptime(date, "%m/%d/%Y").date(),
-        sentiment=sentiment,
-        relevance=relevance,
-        relative_sentiment=relative_sentiment,
-    )
-    db.add(article)
-    db.commit()
-    db.refresh(article)
-    print(f"article '{title}' added to the db ")
-
-#returns on the root URL
-@app.get("/")
-def read_root():
-    return{"message": "Hello world"}
+    data = data_to_dict(data)
+    return data

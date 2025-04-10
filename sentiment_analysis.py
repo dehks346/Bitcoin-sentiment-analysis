@@ -27,7 +27,7 @@ def data_to_dict(data):
     stories = []
     for story in data['news_results']:
         if 'date' in story:
-            stories.append({'title': story['title'], 'date': str(story['date'][:10])})
+            stories.append({'title': story['title'], 'date': str(story['date'])})
     stories = (sorted(stories, key=lambda x: x['date']))
     stories.reverse()
     return stories
@@ -66,3 +66,4 @@ def vader_sentiment_array(data):
             negativeSentimentsArray.append(x['relative_compound'])
         sentimentArray.append(x['relative_compound'])
     return sentimentArray, positiveSentimentsArray, neutralSentimentsArray, negativeSentimentsArray
+
