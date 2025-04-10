@@ -37,9 +37,12 @@
                 <th class="tg-0lax">ID</th>
                 <th class="tg-0lax">Title</th>
                 <th class="tg-0lax">Date</th>
-                <th class="tg-0lax">Relevance</th>
-                <th class="tg-0lax">Sentiment</th>
-                <th class="tg-0lax">Relative Sentiment</th>
+                <th class="tg-0lax">Vader Sentiment</th>
+                <th class="tg-0lax">Vader Compound</th>
+                <th class="tg-0lax">TextBlob Polarity</th>
+                <th class="tg-0lax">TextBlob Sentiment</th>
+                <th class="tg-0lax">Combined Sentiment</th>
+
             </tr>
         </thead>
         <tbody>
@@ -47,9 +50,11 @@
                 <td class="tg-0lax">{{ x.id }}</td>
                 <td class="tg-0lax">{{ x.title }}</td>
                 <td class="tg-0lax">{{ x.date }}</td>
-                <td class="tg-0lax">{{ x.relevance }}</td>
-                <td class="tg-0lax">{{ x.sentiment }}</td>
-                <td class="tg-0lax">{{ x.relative_sentiment }}</td>
+                <td class="tg-0lax">{{ x.vader_sentiment }}</td>
+                <td class="tg-0lax">{{ x.vader_compound }}</td>
+                <td class="tg-0lax">{{ x.textblob_polarity }}</td>
+                <td class="tg-0lax">{{ x.textblob_sentiment }}</td>
+                <td class="tg-0lax">{{ x.combined_sentiment }}</td>
             </tr>
         </tbody>
     </table>

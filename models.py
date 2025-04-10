@@ -10,8 +10,10 @@ class NewsArticle(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, unique=True, nullable=False)
     date = Column(DateTime)
-    sentiment = Column(Float)
-    relevance = Column(Float)
-    relative_sentiment = Column(Float)
+    vader_sentiment = Column(String)
+    vader_compound = Column(Float)
+    textblob_sentiment = Column(String)
+    textblob_polarity = Column(Float)
+    combined_sentiment = Column(Float)
 
 

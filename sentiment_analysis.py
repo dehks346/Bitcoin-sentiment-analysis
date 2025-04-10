@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import NewsArticle
 from datetime import datetime
+from textblob import TextBlob
 
 db: Session = SessionLocal()
 
@@ -32,38 +33,23 @@ def data_to_dict(data):
     stories.reverse()
     return stories
 
-#calculate relevance
-def calculate_relevance(data):
-    divider = 1
-    for story in data:
-        relevanceScore = 1 #reset relevance score
-        divider *= 0.995
-        relevanceScore *= divider
-        if relevanceScore >= 0: relevanceScore +=1
-        else: relevanceScore -= 1
-        #relevanceScore = round(relevanceScore,4)    
-        story['relevance'] = relevanceScore
-    return data
-
 #VADER sentiment analysis
-def vader_sentiment_analysis(data):
+def sentiment_analysis(data):
+    print('vader')
     SIA = SentimentIntensityAnalyzer()
+    
     for x in data:
-        sentiment = SIA.polarity_scores(x['title'])
-        relativeCompound = sentiment['compound'] * x['relevance']
-        x['sentiment'] = sentiment
-        x['relative_compound'] = relativeCompound
+        sentimentTextBlob = TextBlob(x['title'])
+        sentimentVader = SIA.polarity_scores(x['title'])
+        textblob_dict = {
+            'polarity': sentimentTextBlob.sentiment.polarity,
+            'subjectivity': sentimentTextBlob.sentiment.subjectivity
+        }
+        x['vader_sentiment'] = str(sentimentVader)
+        x['vader_compound'] = sentimentVader['compound']
+        x['textblob_sentiment'] = str(textblob_dict)
+        x['textblob_polarity'] = textblob_dict['polarity']
+        x['combined_sentiment'] = (0.7 * float(sentimentVader['compound'])) + (0.3 * float(textblob_dict['polarity']))
     return data
 
-def vader_sentiment_array(data):
-    sentimentArray, positiveSentimentsArray, neutralSentimentsArray, negativeSentimentsArray = [],[],[], []
-    for x in data:
-        if x['relative_compound'] >= 0.05: 
-            positiveSentimentsArray.append(x['relative_compound'])
-        elif -0.05 < x['relative_compound'] < 0.05:
-            neutralSentimentsArray.append(x['relative_compound'])
-        else:
-            negativeSentimentsArray.append(x['relative_compound'])
-        sentimentArray.append(x['relative_compound'])
-    return sentimentArray, positiveSentimentsArray, neutralSentimentsArray, negativeSentimentsArray
 
