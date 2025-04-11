@@ -1,21 +1,14 @@
-from fastapi import FastAPI, Depends, Request
-from database import SessionLocal, engine
-from models import NewsArticle, Base, TrainingData
-from sentiment_analysis import get_data, data_to_dict, sentiment_analysis
+from fastapi import FastAPI, Request, Header
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-import plotly.express as px
-from jinja2 import Template
 from sqlalchemy import func
-from datetime import datetime
-import json
+from datetime import datetime, timedelta
+from database import SessionLocal
+from models import NewsArticle, TrainingData
+from sentiment_analysis import get_data, data_to_dict, sentiment_analysis
+import plotly.express as px
 import pandas as pd
 import yfinance as yf
-import plotly.graph_objects as go
-from fastapi import Header
-from requests import Session
-import numpy as np
 
 
 CHART_CONFIG = {
@@ -52,19 +45,20 @@ CHART_CONFIG = {
 app = FastAPI()
 templates = Jinja2Templates(directory='templates')
 
-
+def get_unproccessed_data():
+    params = {"api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0", "engine": "google_news", "hl": "en", "q": "bitcoin"}
+    data = get_data(params)
+    data = data_to_dict(data)
+    return data
 
 
 @app.get('/fetch-and-store-training-data')
 async def fetch_and_store_training_data():
     with SessionLocal() as db:
         today = datetime.now().date()
-        articles = db.query(NewsArticle).filter(
-            func.date(NewsArticle.date) == today
-        ).all()
+        articles = db.query(NewsArticle).filter(func.date(NewsArticle.date) == today).all()
         
-        if not articles:
-            return {"messages": 'no articles found for today'}
+        if not articles: return {"messages": 'no articles found for today'}
         
         average_vader = sum(a.vader_compound for a in articles) / len(articles)
         average_textblob = sum(a.textblob_polarity for a in articles) / len(articles)
@@ -75,9 +69,7 @@ async def fetch_and_store_training_data():
         yesterday_close = btc_data['Close'].iloc[-2]
         daily_return = (today_close - yesterday_close) / yesterday_close
         
-        record = db.query(TrainingData).filter(
-            func.date(TrainingData.date) == today
-        ).first()
+        record = db.query(TrainingData).filter(func.date(TrainingData.date) == today).first()
         
         if not record:
             record = TrainingData(
@@ -104,26 +96,13 @@ async def fetch_and_store_training_data():
         return {"message": record}
 
 
-def get_unproccessed_data():
-    params = {
-    "api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0",
-    "engine": "google_news",
-    "hl": "en",
-    "q": "bitcoin"
-    }
-    data = get_data(params)
-    data = data_to_dict(data)
-    return data
 
 @app.get('/fetch-and-store-data')
 async def fetch_and_store_data():
-    
     data = get_unproccessed_data()
     titles = [item['title'] for item in data]
     
-    
     with SessionLocal() as db:
-        
         existing_titles = {row[0] for row in db.query(NewsArticle.title).filter(NewsArticle.title.in_(titles)).all()}        
         new_articles = [item for item in data if item['title'] not in existing_titles]
     
@@ -162,61 +141,45 @@ async def fetch_and_store_data():
             stored_count += 1
     return {"message": f"Stored {stored_count} new articles out of {len(titles)} fetched"}
 
-
-@app.get('/graph', response_class=HTMLResponse)
-async def combined_graph(
-    request: Request,
-    cache_control: str = Header(default="max-age=3600")  # 1 hour cache
-):
+@app.get('/dashboard', response_class=HTMLResponse)
+async def combined_graph(request: Request, cache_control: str = Header(default="max-age=3600")):
     with SessionLocal() as db:
         articles = db.query(NewsArticle).order_by(NewsArticle.date.asc()).all()
         training = db.query(TrainingData).order_by(TrainingData.date.asc()).all()
-
+        min_date = db.query(func.min(NewsArticle.date)).scalar()
+        max_date = db.query(func.max(NewsArticle.date)).scalar()
     
-    if not articles:
-        return templates.TemplateResponse("graph.html", {
-            "request": request, 
-            "sentiment_graph": "<p>No sentiment data available</p>",
-        })
-
+    if not articles: return templates.TemplateResponse("graph.html", {"request": request, "sentiment_graph": "<p>No sentiment data available</p>",})
     
+    start_date = min_date.strftime('%Y-%m-%d')
+    end_date = (max_date + timedelta(days=1)).strftime('%Y-%m-%d')  
+    btc_data = yf.Ticker('BTC-GBP').history(start=start_date, end=end_date, interval='1h')        
+    df_btc = pd.DataFrame({'date': btc_data.index, 'btc_price': btc_data['Close']})
+    
+    btc_graph = create_btc_graph(df_btc)
     sentiment_graph = create_sentiment_graph(articles)
-        
-    response = templates.TemplateResponse(
-        'graph.html',
-        {
-            'request': request,
-            'sentiment_graph': sentiment_graph,
-            'training_data': training,
-            'articles': articles
-        }
-    )
+    
+    response = templates.TemplateResponse('index.html',{'request': request,'sentiment_graph': sentiment_graph,'btc_graph': btc_graph,'training_data': training,'articles': articles})
     response.headers["Cache-Control"] = cache_control
     return response
 
 def create_sentiment_graph(articles):
-    # Data preparation
     dates = [article.date for article in articles]
     vader_compound = [article.vader_compound for article in articles]
     textblob_polarity = [article.textblob_polarity for article in articles]
     combined_sentiment = [article.combined_sentiment for article in articles]
-    
     df = pd.DataFrame({
         'date': pd.to_datetime(dates),
         'vader_compound': vader_compound,
         'textblob_polarity': textblob_polarity,
         'combined_sentiment': combined_sentiment
     }).sort_values(by='date')
-    
-    # Calculate rolling average
     window_size = 3
     df['smoothed_avg'] = df['combined_sentiment'].rolling(
         window=window_size,
         min_periods=1,
         center=True
     ).mean()
-    
-    # Create figure
     fig = px.line(
         df,
         x='date',
@@ -224,19 +187,14 @@ def create_sentiment_graph(articles):
         labels={'date': 'Date', 'value': 'Sentiment Score'},
         title='<b>Bitcoin News Sentiment</b>',
     )
-    
-    # Line styling
     line_styles = {
         'vader_compound': {'color': '#4285F4', 'width': 2.2, 'dash': 'solid'},
         'textblob_polarity': {'color': '#EA4335', 'width': 2.2, 'dash': 'solid'},
         'combined_sentiment': {'color': '#34A853', 'width': 3, 'dash': 'solid'}
     }
-    
     for trace in fig.data:
         if trace.name in line_styles:
             trace.update(line=line_styles[trace.name])
-    
-    # Add smoothed average
     fig.add_scatter(
         x=df['date'],
         y=df['smoothed_avg'],
@@ -244,8 +202,6 @@ def create_sentiment_graph(articles):
         name=f'Trend Line ({window_size}-day)',
         line=dict(color='#9D40C5', width=3.5, dash='dot')
     )
-    
-    # Sentiment regions
     sentiment_regions = [
         {'range': (-1, -0.5), 'color': 'rgba(234, 67, 53, 0.15)', 'label': 'Negative'},
         {'range': (-0.5, -0.1), 'color': 'rgba(234, 67, 53, 0.08)', 'label': 'Slightly Negative'},
@@ -253,7 +209,6 @@ def create_sentiment_graph(articles):
         {'range': (0.1, 0.5), 'color': 'rgba(52, 168, 83, 0.08)', 'label': 'Slightly Positive'},
         {'range': (0.5, 1), 'color': 'rgba(52, 168, 83, 0.15)', 'label': 'Positive'}
     ]
-    
     for region in sentiment_regions:
         fig.add_shape(
             type="rect",
@@ -265,8 +220,6 @@ def create_sentiment_graph(articles):
             layer="below",
             line_width=0
         )
-    
-    # Zero line
     fig.add_hline(
         y=0,
         line_dash='dash',
@@ -276,13 +229,9 @@ def create_sentiment_graph(articles):
         annotation_position="bottom right",
         annotation_font=dict(size=12)
     )
-    
-    # Detect significant changes
     df['change'] = df['combined_sentiment'].diff()
     change_threshold = 0.25
     significant_changes = df[abs(df['change']) > change_threshold].nlargest(3, 'change')
-    
-    # Annotate changes
     for _, row in significant_changes.iterrows():
         direction = "↑" if row['change'] > 0 else "↓"
         fig.add_annotation(
@@ -298,10 +247,6 @@ def create_sentiment_graph(articles):
             borderwidth=1,
             font=dict(size=12, color='#5F6368')
         )
-        
-        
-    
-    # Layout adjustments
     fig.update_layout(
         autosize=True,
         plot_bgcolor='white',
@@ -365,9 +310,53 @@ def create_sentiment_graph(articles):
             bordercolor="#5F6368"
         )
     )
-    
-    fig.update_traces(
-        hovertemplate="<b>%{x|%b %d, %Y}</b><br>Sentiment: %{y:.3f}<extra>%{fullData.name}</extra>"
+
+    fig.update_traces(hovertemplate="<b>%{x|%b %d, %Y}</b><br>Sentiment: %{y:.3f}<extra>%{fullData.name}</extra>")
+    return fig.to_html(full_html=False)
+def create_btc_graph(df_btc):
+    fig = px.line(
+        df_btc,
+        x='date',
+        y='btc_price',
+        labels={'date': 'Date', 'btc_price': 'Bitcoin Price (GBP)'},
+        title='<b>Bitcoin Price History</b>'
+    )
+
+    fig.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(family="Arial", size=13),
+        title={'text': "<b>Bitcoin Price History</b>", 'y': 0.96, 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'},
+        xaxis=dict(title="<b>Date</b>", gridcolor='rgba(0,0,0,0.05)', showgrid=True),
+        yaxis=dict(title="<b>Price (GBP)</b>", gridcolor='rgba(0,0,0,0.05)', tickformat=",.0f"),
+        hovermode="x unified",
     )
     
+    fig.update_layout(
+        xaxis=dict(
+            title="<b>Date</b>",
+            title_font=dict(size=14),
+            gridcolor='rgba(0,0,0,0.05)',
+            showgrid=True,
+            rangeslider=dict(visible=True, thickness=0.08),
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=7, label="1w", step="day", stepmode="backward"),
+                    dict(count=1, label="1m", step="month", stepmode="backward"),
+                    dict(count=3, label="3m", step="month", stepmode="backward"),
+                    dict(step="all", label="Full Range")
+                ]),
+                font=dict(size=11),
+                bgcolor='rgba(255,255,255,0.8)',
+                bordercolor='rgba(0,0,0,0.1)',
+                borderwidth=1
+            )
+        ),
+    )
+
+    fig.update_traces(
+        line=dict(color='#4285F4', width=2.5),
+        hovertemplate="<b>%{x|%b %d, %Y}</b><br>Price: £%{y:,.2f}<extra></extra>"
+    )
+
     return fig.to_html(full_html=False)

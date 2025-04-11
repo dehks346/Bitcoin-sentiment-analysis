@@ -1,22 +1,12 @@
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from serpapi import GoogleSearch
-import matplotlib.pyplot as plt
-import numpy as np
 import plotly.graph_objects as go
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import NewsArticle
-from datetime import datetime
 from textblob import TextBlob
 
 db: Session = SessionLocal()
 
-params = {
-    "api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0",
-    "engine": "google_news",
-    "hl": "en",
-    "q": "trump"
-}
 #get the news data
 def get_data(parameters):
     search = GoogleSearch(parameters)
