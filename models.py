@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from database import Base
 
@@ -16,4 +16,20 @@ class NewsArticle(Base):
     textblob_polarity = Column(Float)
     combined_sentiment = Column(Float)
 
+
+class TrainingData(Base):
+    __tablename__ = 'training_data'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime)
+    vader_score = Column(Float)
+    textblob_score = Column(Float)
+    sentiment_momentum = Column(Float)
+    
+    
+    btc_price = Column(Float)
+    btc_volume = Column(Float)
+    price_volatility = Column(Float)
+    
+    next_day_prediction = Column(Boolean)
 

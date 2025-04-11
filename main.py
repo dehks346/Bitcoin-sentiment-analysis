@@ -14,6 +14,8 @@ import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
 from fastapi import Header
+from requests import Session
+import pprint
 
 
 # Shared configuration for both charts
@@ -70,6 +72,46 @@ def get_unproccessed_data():
     data = get_data(params)
     data = data_to_dict(data)
     return data
+
+def get_btc_data():
+    url = 'https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest'
+    api = 'bf36015e-b032-48c9-b401-c03d5235e3c3'
+    
+    parameters = {
+        'slug':'bitcoin',
+        'convert':'GBP'
+    }
+    
+    headers = {
+        'Accepts': 'application/json',
+        'X-CMC_PRO_API_KEY': api
+    }
+    
+    session = Session()
+    session.headers.update(headers)
+    
+    response = session.get(url, params=parameters)
+    
+    info = json.loads(response.text)['data']['1']['quote']['GBP']['price']
+    
+    return info
+
+@app.get('/fetch-and-store-training-data')
+async def fetch_and_store_training_data():
+    with SessionLocal() as db:
+        today = datetime.now().date()
+        articles = db.query(NewsArticle).filter(
+            func.date(NewsArticle.date) == today
+        ).all()
+        
+        if not articles:
+            return {"messages": 'no articles found for today'}
+        
+        average_vader = sum(a.vader_compound for a in articles) / len(articles)
+        average_textblob = sum(a.textblob_polarity for a in articles) / len(articles)
+        average_combined_sentiment = sum(a.combined_sentiment for a in articles) / len(articles)
+    
+    
 
 
 @app.get('/fetch-and-store-data')
@@ -130,7 +172,7 @@ async def display_data(request: Request):
     return templates.TemplateResponse('data.html', {'request': request, 'articles': articles})
 
 
-@app.get('/combined-graph', response_class=HTMLResponse)
+@app.get('/graph', response_class=HTMLResponse)
 async def combined_graph(
     request: Request,
     cache_control: str = Header(default="max-age=3600")  # 1 hour cache
@@ -144,108 +186,20 @@ async def combined_graph(
             "sentiment_graph": "<p>No sentiment data available</p>",
             "bitcoin_graph": ""
         })
+
     
-    min_date = min(article.date for article in articles)
-    max_date = max(article.date for article in articles)
-    
-    # Extend end date to current hour if needed
-    now = datetime.utcnow()
-    if max_date.date() == now.date():
-        max_date = now
     
     sentiment_graph = create_sentiment_graph(articles)
-    bitcoin_graph = create_bitcoin_graph(min_date, max_date)
-    
+        
     response = templates.TemplateResponse(
         'graph.html',
         {
             'request': request,
             'sentiment_graph': sentiment_graph,
-            'bitcoin_graph': bitcoin_graph,
-            'last_updated': now.strftime("%Y-%m-%d %H:%M UTC")
         }
     )
     response.headers["Cache-Control"] = cache_control
     return response
-    
-def fetch_bitcoin_data(start_date, end_date):
-    btc = yf.Ticker("BTC-USD")
-    btc_df = btc.history(
-        start=start_date.strftime('%Y-%m-%d'),
-        end=end_date.strftime('%Y-%m-%d'),
-        interval="1h"  # Changed from daily to hourly
-    ).reset_index()
-    
-    # For periods >90 days, fall back to daily data
-    if len(btc_df) < 2:
-        btc_df = btc.history(
-            start=start_date.strftime('%Y-%m-%d'),
-            end=end_date.strftime('%Y-%m-%d'),
-            interval="1d"
-        ).reset_index()
-    
-    return btc_df
-
-def create_bitcoin_graph(start_date, end_date):
-    btc_df = fetch_bitcoin_data(start_date, end_date)
-    
-    fig = go.Figure(
-        layout=go.Layout(
-            autosize=True,
-            width=CHART_CONFIG["width"],
-            height=CHART_CONFIG["height"],
-            margin=dict(
-                l=50,
-                r=50,
-                b=60,
-                t=90,
-                pad=4,
-                autoexpand=True
-            )
-        )
-    )
-    
-    # Candlestick-style visualization for hourly data
-    fig.add_trace(go.Scatter(
-        x=btc_df['Datetime'],
-        y=btc_df['Close'],
-        mode='lines',
-        name='BTC Price',
-        line=dict(
-            color=CHART_CONFIG["colors"]["combined"],
-            width=2  # Slightly thinner for dense hourly data
-        ),
-        connectgaps=True
-    ))
-    
-    # Add thicker line for daily average (smooths hourly fluctuations)
-    if '1h' in str(btc_df['Datetime'].diff().min()):
-        daily_df = btc_df.resample('D', on='Datetime').mean().reset_index()
-        fig.add_trace(go.Scatter(
-            x=daily_df['Datetime'],
-            y=daily_df['Close'],
-            mode='lines',
-            name='Daily Average',
-            line=dict(
-                color=CHART_CONFIG["colors"]["combined"],
-                width=3.5
-            )
-        ))
-    
-    # ... [rest of your identical styling code] ...
-    
-    # Update x-axis to handle hourly ticks
-    fig.update_xaxes(
-        rangeslider_visible=True,
-        rangebreaks=[
-            # Hide weekends for crypto markets that trade 24/7
-            dict(bounds=["sat", "mon"]),
-            # Hide non-trading hours (if needed)
-            dict(bounds=[20, 9], pattern="hour")  # 8pm to 9am
-        ]
-    )
-    
-    return fig.to_html(full_html=False)
 
 def create_sentiment_graph(articles):
     # Data preparation
@@ -427,43 +381,4 @@ def create_sentiment_graph(articles):
     
     return fig.to_html(full_html=False)
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    with SessionLocal() as db:
-        articles = db.query(NewsArticle).order_by(NewsArticle.date.asc()).all()
-    
-    if not articles:
-        return templates.TemplateResponse("graph.html", {
-            "request": request, 
-            "sentiment_graph": "<p>No sentiment data available</p>",
-            "bitcoin_graph": ""
-        })
-    
-    min_date = min(article.date for article in articles)
-    max_date = max(article.date for article in articles)
-    
-    # Get current BTC price for the metrics panel
-    btc = yf.Ticker("BTC-USD")
-    current_btc = btc.history(period="1d")
-    current_price = current_btc['Close'].iloc[-1] if not current_btc.empty else 0
-    
-    # Calculate current sentiment (average of last 3 articles)
-    current_sentiment = sum(a.combined_sentiment for a in articles[-3:])/3 if len(articles) >= 3 else 0
-    
-    sentiment_graph = create_sentiment_graph(articles)
-    bitcoin_graph = create_bitcoin_graph(min_date, max_date)
-    
-    return templates.TemplateResponse(
-        "graph.html",
-        {
-            "request": request,
-            "sentiment_graph": sentiment_graph,
-            "bitcoin_graph": bitcoin_graph,
-            "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-            "metrics": {
-                "btc_price": current_price,
-                "current_sentiment": current_sentiment,
-                # Add more metrics as needed
-            }
-        }
-    )
+
