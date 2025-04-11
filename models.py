@@ -24,6 +24,7 @@ class TrainingData(Base):
     date = Column(DateTime)
     vader_score = Column(Float)
     textblob_score = Column(Float)
+    combined_sentiment = Column(Float)
     sentiment_momentum = Column(Float)
     
     

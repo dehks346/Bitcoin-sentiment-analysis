@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Request
 from database import SessionLocal, engine
-from models import NewsArticle, Base
+from models import NewsArticle, Base, TrainingData
 from sentiment_analysis import get_data, data_to_dict, sentiment_analysis
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
@@ -15,10 +15,9 @@ import yfinance as yf
 import plotly.graph_objects as go
 from fastapi import Header
 from requests import Session
-import pprint
+import numpy as np
 
 
-# Shared configuration for both charts
 CHART_CONFIG = {
     "width": 1100,
     "height": 650,
@@ -50,51 +49,11 @@ CHART_CONFIG = {
     }
 }
 
-
-
-
-
 app = FastAPI()
-
 templates = Jinja2Templates(directory='templates')
 
-#Base.metadata.drop_all(bind=engine)
-#Base.metadata.create_all(bind=engine)
-#print("Database reset successfully!")
 
-def get_unproccessed_data():
-    params = {
-    "api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0",
-    "engine": "google_news",
-    "hl": "en",
-    "q": "bitcoin"
-    }
-    data = get_data(params)
-    data = data_to_dict(data)
-    return data
 
-def get_btc_data():
-    url = 'https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest'
-    api = 'bf36015e-b032-48c9-b401-c03d5235e3c3'
-    
-    parameters = {
-        'slug':'bitcoin',
-        'convert':'GBP'
-    }
-    
-    headers = {
-        'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': api
-    }
-    
-    session = Session()
-    session.headers.update(headers)
-    
-    response = session.get(url, params=parameters)
-    
-    info = json.loads(response.text)['data']['1']['quote']['GBP']['price']
-    
-    return info
 
 @app.get('/fetch-and-store-training-data')
 async def fetch_and_store_training_data():
@@ -110,9 +69,51 @@ async def fetch_and_store_training_data():
         average_vader = sum(a.vader_compound for a in articles) / len(articles)
         average_textblob = sum(a.textblob_polarity for a in articles) / len(articles)
         average_combined_sentiment = sum(a.combined_sentiment for a in articles) / len(articles)
-    
-    
+        
+        btc_data = yf.Ticker('BTC-GBP').history(period='2d')
+        today_close = btc_data['Close'].iloc[-1]
+        yesterday_close = btc_data['Close'].iloc[-2]
+        daily_return = (today_close - yesterday_close) / yesterday_close
+        
+        record = db.query(TrainingData).filter(
+            func.date(TrainingData.date) == today
+        ).first()
+        
+        if not record:
+            record = TrainingData(
+                date=datetime.now(),
+                vader_score = average_vader,
+                textblob_score = average_textblob,
+                combined_sentiment = average_combined_sentiment,
+                sentiment_momentum = 0,
+                
+                btc_price = today_close,
+                btc_volume= btc_data['Volume'].iloc[-1],
+                price_volatility = btc_data['Close'].std(),
+                next_day_prediction=None
+            )
+            db.add(record)
+        else:
+            record.vader_score = average_vader
+            record.textblob_score = average_textblob
+            record.combined_sentiment = average_combined_sentiment
+            record.btc_price = today_close
+            record.btc_volume = btc_data['Volume'].iloc[-1]
+        db.commit()
+        db.refresh(record)
+        return {"message": record}
 
+
+def get_unproccessed_data():
+    params = {
+    "api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0",
+    "engine": "google_news",
+    "hl": "en",
+    "q": "bitcoin"
+    }
+    data = get_data(params)
+    data = data_to_dict(data)
+    return data
 
 @app.get('/fetch-and-store-data')
 async def fetch_and_store_data():
@@ -162,16 +163,6 @@ async def fetch_and_store_data():
     return {"message": f"Stored {stored_count} new articles out of {len(titles)} fetched"}
 
 
-@app.get('/display-data', response_class=HTMLResponse)
-async def display_data(request: Request):
-    
-    with SessionLocal() as db:
-        articles = db.query(NewsArticle).all()
-        
-        
-    return templates.TemplateResponse('data.html', {'request': request, 'articles': articles})
-
-
 @app.get('/graph', response_class=HTMLResponse)
 async def combined_graph(
     request: Request,
@@ -179,15 +170,15 @@ async def combined_graph(
 ):
     with SessionLocal() as db:
         articles = db.query(NewsArticle).order_by(NewsArticle.date.asc()).all()
+        training = db.query(TrainingData).order_by(TrainingData.date.asc()).all()
+
     
     if not articles:
         return templates.TemplateResponse("graph.html", {
             "request": request, 
             "sentiment_graph": "<p>No sentiment data available</p>",
-            "bitcoin_graph": ""
         })
 
-    
     
     sentiment_graph = create_sentiment_graph(articles)
         
@@ -196,6 +187,8 @@ async def combined_graph(
         {
             'request': request,
             'sentiment_graph': sentiment_graph,
+            'training_data': training,
+            'articles': articles
         }
     )
     response.headers["Cache-Control"] = cache_control
@@ -229,9 +222,7 @@ def create_sentiment_graph(articles):
         x='date',
         y=['vader_compound', 'textblob_polarity', 'combined_sentiment'],
         labels={'date': 'Date', 'value': 'Sentiment Score'},
-        title='<b>News Sentiment Analysis</b>',
-        width=CHART_CONFIG["width"],
-        height=CHART_CONFIG["height"]
+        title='<b>Bitcoin News Sentiment</b>',
     )
     
     # Line styling
@@ -380,5 +371,3 @@ def create_sentiment_graph(articles):
     )
     
     return fig.to_html(full_html=False)
-
-
