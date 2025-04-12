@@ -1,5 +1,5 @@
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from serpapi import GoogleSearch
+from serpapi import SerpApiClient
 import plotly.graph_objects as go
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -9,17 +9,17 @@ db: Session = SessionLocal()
 
 #get the news data
 def get_data(parameters):
-    search = GoogleSearch(parameters)
-    results = search.get_dict()
+    search = SerpApiClient(**parameters)
+    results = search.get_json()
     return results
 
 #append data to dictionary and sort by date
 def data_to_dict(data):
     stories = []
-    for story in data['news_results']:
+    for story in data.get('news_results', []):
         if 'date' in story:
             stories.append({'title': story['title'], 'date': str(story['date'])})
-    stories = (sorted(stories, key=lambda x: x['date']))
+    stories = sorted(stories, key=lambda x: x['date'])
     stories.reverse()
     return stories
 
