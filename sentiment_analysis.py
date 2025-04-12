@@ -1,17 +1,17 @@
+from serpapi import GoogleSearch
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from serpapi import SerpApiClient
-import plotly.graph_objects as go
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from textblob import TextBlob
 
 db: Session = SessionLocal()
 
-#get the news data
+# Get the news data
 def get_data(parameters):
-    search = SerpApiClient(**parameters)
-    results = search.get_json()
+    search = GoogleSearch(parameters)
+    results = search.get_dict()
     return results
+
 
 #append data to dictionary and sort by date
 def data_to_dict(data):
