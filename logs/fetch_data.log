@@ -1,0 +1,8 @@
+2025-04-12 12:49:59,545 - INFO - Starting data fetch and store process
+2025-04-12 12:49:59,735 - INFO - No data fetched from google news
+2025-04-12 12:49:59,951 - INFO - Training data stored successfully
+2025-04-12 12:49:59,951 - INFO - Process completed: 0 articles stored, training data stored
+2025-04-12 12:51:45,288 - INFO - Starting data fetch and store process
+2025-04-12 12:51:47,761 - INFO - Stored 5 new articles out of 93 fetched
+2025-04-12 12:51:47,968 - INFO - Training data stored successfully
+2025-04-12 12:51:47,968 - INFO - Process completed: 5 articles stored, training data stored
