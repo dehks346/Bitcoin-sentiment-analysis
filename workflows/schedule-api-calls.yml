@@ -1,0 +1,28 @@
+name: Scheduled API Calls
+
+on:
+  schedule:
+    - cron: '2 12 * * *'  # This runs the action every day at midnight UTC. Modify the cron expression as needed.
+  workflow_dispatch:  # Allows you to trigger it manually as well.
+
+jobs:
+  fetch_data:
+    runs-on: ubuntu-latest  # Use the latest Ubuntu image for the runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3'  # Specify the Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Ensure your API and database libraries are listed in requirements.txt
+
+      - name: Run Python script
+        run: |
+          python fetch_data.py  # Replace with the actual script that calls the API and stores the data
