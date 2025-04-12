@@ -25,9 +25,7 @@ def data_to_dict(data):
 
 #VADER sentiment analysis
 def sentiment_analysis(data):
-    print('vader')
-    SIA = SentimentIntensityAnalyzer()
-    
+    SIA = SentimentIntensityAnalyzer()    
     for x in data:
         sentimentTextBlob = TextBlob(x['title'])
         sentimentVader = SIA.polarity_scores(x['title'])

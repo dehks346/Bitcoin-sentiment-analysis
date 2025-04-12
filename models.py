@@ -32,4 +32,6 @@ class TrainingData(Base):
     price_volatility = Column(Float)
     
     next_day_prediction = Column(Boolean)
+    
+    total_articles = Column(Integer, default=0)  
 
