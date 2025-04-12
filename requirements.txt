@@ -6,4 +6,4 @@ pandas
 yfinance
 vaderSentiment
 textblob
-serpapi
+serpapi==0.1.5
