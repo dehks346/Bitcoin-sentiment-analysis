@@ -4,3 +4,6 @@ sqlalchemy
 plotly
 pandas
 yfinance
+vaderSentiment
+textblob
+serpapi

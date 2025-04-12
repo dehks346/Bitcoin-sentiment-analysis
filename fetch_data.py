@@ -5,23 +5,23 @@ from sqlalchemy import func
 from database import SessionLocal
 from models import NewsArticle, TrainingData
 from sentiment_analysis import get_data, data_to_dict, sentiment_analysis
+import os
 import yfinance as yf
 import asyncio
 
 
 logging.basicConfig(
     level=logging.INFO,
-    filename='/Users/henry/Documents/datasi/fetch_data.log',
+    filename='logs/fetch_data.log',  # Relative path
     filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 
-print("test")
-
+"e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0"
 def get_unproccessed_data():
-    params = {"api_key": "e7cce04dc81f518b1b49a4b778a0c71ca7956e011710ed7ce06155f8765185c0", "engine": "google_news", "hl": "en", "q": "bitcoin"}
+    params = {"api_key": os.environ.get("SERPAPI_API_KEY"), "engine": "google_news", "hl": "en", "q": "bitcoin"}
     try:
         data = get_data(params)
         data = data_to_dict(data)
