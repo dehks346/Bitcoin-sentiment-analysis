@@ -82,3 +82,7 @@
 2025-04-29 23:11:44,955 - INFO - Stored 63 new articles out of 100 fetched
 2025-04-29 23:11:45,985 - ERROR - Error in fetching daily summary: Too Many Requests. Rate limited. Try after a while.
 2025-04-29 23:11:45,985 - INFO - Process completed: 63 articles stored, training data not stored
+2025-04-30 23:12:22,142 - INFO - Starting data fetch and store process
+2025-04-30 23:12:23,518 - INFO - Stored 54 new articles out of 93 fetched
+2025-04-30 23:12:23,919 - INFO - Training data stored successfully
+2025-04-30 23:12:23,919 - INFO - Process completed: 54 articles stored, training data stored
