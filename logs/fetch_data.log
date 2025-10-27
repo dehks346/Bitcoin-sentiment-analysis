@@ -802,3 +802,7 @@
 2025-10-26 23:11:46,518 - INFO - Stored 66 new articles out of 98 fetched
 2025-10-26 23:11:47,159 - INFO - Training data stored successfully
 2025-10-26 23:11:47,160 - INFO - Process completed: 66 articles stored, training data stored
+2025-10-27 23:11:40,524 - INFO - Starting data fetch and store process
+2025-10-27 23:11:44,047 - INFO - Stored 78 new articles out of 95 fetched
+2025-10-27 23:11:44,470 - INFO - Training data stored successfully
+2025-10-27 23:11:44,470 - INFO - Process completed: 78 articles stored, training data stored
