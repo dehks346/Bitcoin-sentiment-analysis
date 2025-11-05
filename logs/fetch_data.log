@@ -838,3 +838,7 @@
 2025-11-04 23:12:04,247 - INFO - Stored 87 new articles out of 97 fetched
 2025-11-04 23:12:05,143 - INFO - Training data stored successfully
 2025-11-04 23:12:05,143 - INFO - Process completed: 87 articles stored, training data stored
+2025-11-05 23:12:18,641 - INFO - Starting data fetch and store process
+2025-11-05 23:12:21,972 - INFO - Stored 68 new articles out of 97 fetched
+2025-11-05 23:12:22,289 - ERROR - Error in fetching daily summary: single positional indexer is out-of-bounds
+2025-11-05 23:12:22,289 - INFO - Process completed: 68 articles stored, training data not stored
