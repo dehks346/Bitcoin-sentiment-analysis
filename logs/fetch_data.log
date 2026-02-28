@@ -1298,3 +1298,7 @@
 2026-02-27 23:16:44,445 - INFO - Stored 73 new articles out of 96 fetched
 2026-02-27 23:16:45,009 - INFO - Training data stored successfully
 2026-02-27 23:16:45,009 - INFO - Process completed: 73 articles stored, training data stored
+2026-02-28 23:14:31,109 - INFO - Starting data fetch and store process
+2026-02-28 23:14:33,024 - INFO - Stored 56 new articles out of 95 fetched
+2026-02-28 23:14:33,315 - INFO - Training data stored successfully
+2026-02-28 23:14:33,315 - INFO - Process completed: 56 articles stored, training data stored
