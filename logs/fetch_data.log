@@ -1730,3 +1730,7 @@
 2026-06-20 00:01:30,168 - INFO - Starting data fetch and store process
 2026-06-20 00:01:37,301 - INFO - Stored 64 new articles out of 99 fetched
 2026-06-20 00:01:37,308 - INFO - Process completed: 64 articles stored, training data stored
+2026-06-20 23:59:46,338 - INFO - Starting data fetch and store process
+2026-06-20 23:59:47,875 - INFO - Stored 41 new articles out of 99 fetched
+2026-06-20 23:59:48,593 - INFO - Training data stored successfully
+2026-06-20 23:59:48,594 - INFO - Process completed: 41 articles stored, training data stored
