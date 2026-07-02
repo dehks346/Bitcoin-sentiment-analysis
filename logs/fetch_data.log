@@ -1773,3 +1773,7 @@
 2026-07-02 00:01:04,007 - INFO - Starting data fetch and store process
 2026-07-02 00:01:06,816 - INFO - Stored 64 new articles out of 97 fetched
 2026-07-02 00:01:06,823 - INFO - Process completed: 64 articles stored, training data stored
+2026-07-02 23:56:20,283 - INFO - Starting data fetch and store process
+2026-07-02 23:56:22,114 - INFO - Stored 71 new articles out of 99 fetched
+2026-07-02 23:56:22,362 - INFO - Training data stored successfully
+2026-07-02 23:56:22,362 - INFO - Process completed: 71 articles stored, training data stored
