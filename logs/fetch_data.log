@@ -1991,3 +1991,7 @@
 2026-08-25 23:17:20,492 - INFO - Stored 64 new articles out of 91 fetched
 2026-08-25 23:17:20,602 - ERROR - Error in fetching daily summary: Too Many Requests. Rate limited. Try after a while.
 2026-08-25 23:17:20,603 - INFO - Process completed: 64 articles stored, training data not stored
+2026-08-27 04:09:24,469 - INFO - Starting data fetch and store process
+2026-08-27 04:09:26,794 - INFO - Stored 70 new articles out of 99 fetched
+2026-08-27 04:09:27,047 - ERROR - Error in fetching daily summary: single positional indexer is out-of-bounds
+2026-08-27 04:09:27,047 - INFO - Process completed: 70 articles stored, training data not stored
