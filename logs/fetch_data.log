@@ -2019,3 +2019,7 @@
 2026-09-02 00:41:45,939 - INFO - Stored 67 new articles out of 99 fetched
 2026-09-02 00:41:46,959 - ERROR - Error in fetching daily summary: single positional indexer is out-of-bounds
 2026-09-02 00:41:46,959 - INFO - Process completed: 67 articles stored, training data not stored
+2026-09-03 00:52:40,445 - INFO - Starting data fetch and store process
+2026-09-03 00:52:42,591 - INFO - Stored 70 new articles out of 99 fetched
+2026-09-03 00:52:42,854 - ERROR - Error in fetching daily summary: single positional indexer is out-of-bounds
+2026-09-03 00:52:42,854 - INFO - Process completed: 70 articles stored, training data not stored
