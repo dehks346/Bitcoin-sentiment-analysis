@@ -2029,3 +2029,6 @@
 2026-09-05 00:29:31,065 - INFO - Starting data fetch and store process
 2026-09-05 00:30:40,149 - INFO - Stored 79 new articles out of 99 fetched
 2026-09-05 00:30:40,158 - INFO - Process completed: 79 articles stored, training data stored
+2026-09-06 00:24:57,597 - INFO - Starting data fetch and store process
+2026-09-06 00:26:27,726 - INFO - No data fetched from google news
+2026-09-06 00:26:27,739 - INFO - Process completed: 0 articles stored, training data stored
