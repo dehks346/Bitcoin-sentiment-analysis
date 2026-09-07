@@ -2032,3 +2032,6 @@
 2026-09-06 00:24:57,597 - INFO - Starting data fetch and store process
 2026-09-06 00:26:27,726 - INFO - No data fetched from google news
 2026-09-06 00:26:27,739 - INFO - Process completed: 0 articles stored, training data stored
+2026-09-07 00:31:13,746 - INFO - Starting data fetch and store process
+2026-09-07 00:32:43,849 - INFO - No data fetched from google news
+2026-09-07 00:32:43,862 - INFO - Process completed: 0 articles stored, training data stored
